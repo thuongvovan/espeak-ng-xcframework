@@ -9,7 +9,7 @@ FRAMEWORK_NAME="ESpeakNG"
 BUNDLE_IDENTIFIER="com.kokoro.espeakng"
 VERSION="1.52.0"
 MIN_MACOS_VERSION="14.0"
-MIN_IOS_VERSION="16.0"
+MIN_IOS_VERSION="17.0"
 
 # Colors for output
 RED='\033[0;31m'
@@ -66,19 +66,36 @@ build_platform() {
     log "Configuring for $PLATFORM $ARCH (SDK: $SDK)..."
 
     # Platform-specific flags
-    local TARGET_FLAGS=""
+    local TARGET_TRIPLE=""
+    local MIN_VERSION_FLAG=""
+    local DEPLOYMENT_ENV=""
     if [ "$PLATFORM" = "iossimulator" ]; then
-        TARGET_FLAGS="-target $ARCH-apple-ios$MIN_VERSION-simulator"
+        TARGET_TRIPLE="$ARCH-apple-ios$MIN_VERSION-simulator"
+        MIN_VERSION_FLAG="-mios-simulator-version-min=$MIN_VERSION"
     elif [ "$PLATFORM" = "ios" ]; then
-        TARGET_FLAGS="-target $ARCH-apple-ios$MIN_VERSION"
+        TARGET_TRIPLE="$ARCH-apple-ios$MIN_VERSION"
+        MIN_VERSION_FLAG="-miphoneos-version-min=$MIN_VERSION"
+        DEPLOYMENT_ENV="IPHONEOS_DEPLOYMENT_TARGET"
     else
-        TARGET_FLAGS="-target $ARCH-apple-macos$MIN_VERSION"
+        TARGET_TRIPLE="$ARCH-apple-macos$MIN_VERSION"
+        MIN_VERSION_FLAG="-mmacosx-version-min=$MIN_VERSION"
+        DEPLOYMENT_ENV="MACOSX_DEPLOYMENT_TARGET"
     fi
 
-    CFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH -O2" \
-    CXXFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH -O2" \
-    LDFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH" \
-    ./configure \
+    local COMMON_CFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH -O2"
+    local COMMON_LDFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH"
+
+    local CONFIG_ENV=(
+        "SDKROOT=$SDK_PATH"
+        "CFLAGS=$COMMON_CFLAGS"
+        "CXXFLAGS=$COMMON_CFLAGS"
+        "LDFLAGS=$COMMON_LDFLAGS"
+    )
+    if [ -n "$DEPLOYMENT_ENV" ]; then
+        CONFIG_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
+    fi
+
+    env "${CONFIG_ENV[@]}" ./configure \
         --host=$ARCH-apple-darwin \
         --prefix="$INSTALL_DIR" \
         --without-pcaudiolib \
@@ -92,11 +109,15 @@ build_platform() {
 
     # Build
     log "Compiling for $PLATFORM $ARCH..."
-    make -j$(sysctl -n hw.ncpu)
+    local BUILD_ENV=("SDKROOT=$SDK_PATH")
+    if [ -n "$DEPLOYMENT_ENV" ]; then
+        BUILD_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
+    fi
+    env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu)
 
     # Install
     log "Installing for $PLATFORM $ARCH..."
-    make install
+    env "${BUILD_ENV[@]}" make install
 
     # Save the library
     mkdir -p "$BUILD_SUBDIR"
@@ -136,19 +157,34 @@ build_ios_platform() {
 
     SDK_PATH=$(xcrun --sdk $SDK --show-sdk-path)
 
-    local TARGET_FLAGS=""
+    local TARGET_TRIPLE=""
+    local MIN_VERSION_FLAG=""
+    local DEPLOYMENT_ENV=""
     if [ "$PLATFORM" = "iossimulator" ]; then
-        TARGET_FLAGS="-target $ARCH-apple-ios$MIN_VERSION-simulator"
+        TARGET_TRIPLE="$ARCH-apple-ios$MIN_VERSION-simulator"
+        MIN_VERSION_FLAG="-mios-simulator-version-min=$MIN_VERSION"
     else
-        TARGET_FLAGS="-target $ARCH-apple-ios$MIN_VERSION"
+        TARGET_TRIPLE="$ARCH-apple-ios$MIN_VERSION"
+        MIN_VERSION_FLAG="-miphoneos-version-min=$MIN_VERSION"
+        DEPLOYMENT_ENV="IPHONEOS_DEPLOYMENT_TARGET"
+    fi
+
+    local COMMON_CFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH -O2"
+    local COMMON_LDFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH"
+
+    local CONFIG_ENV=(
+        "SDKROOT=$SDK_PATH"
+        "CFLAGS=$COMMON_CFLAGS"
+        "CXXFLAGS=$COMMON_CFLAGS"
+        "LDFLAGS=$COMMON_LDFLAGS"
+    )
+    if [ -n "$DEPLOYMENT_ENV" ]; then
+        CONFIG_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
     fi
 
     log "Configuring for $PLATFORM $ARCH (SDK: $SDK)..."
 
-    CFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH -O2" \
-    CXXFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH -O2" \
-    LDFLAGS="$TARGET_FLAGS -isysroot $SDK_PATH" \
-    ./configure \
+    env "${CONFIG_ENV[@]}" ./configure \
         --host=$ARCH-apple-darwin \
         --prefix="$INSTALL_DIR" \
         --without-pcaudiolib \
@@ -162,11 +198,15 @@ build_ios_platform() {
 
     # Build only the library, not the data
     log "Compiling library for $PLATFORM $ARCH..."
-    make -j$(sysctl -n hw.ncpu) src/libespeak-ng.la
+    local BUILD_ENV=("SDKROOT=$SDK_PATH")
+    if [ -n "$DEPLOYMENT_ENV" ]; then
+        BUILD_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
+    fi
+    env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu) src/libespeak-ng.la
 
     # Install
     log "Installing for $PLATFORM $ARCH..."
-    make install-exec install-espeak_includeHEADERS install-espeak_ng_includeHEADERS
+    env "${BUILD_ENV[@]}" make install-exec install-espeak_includeHEADERS install-espeak_ng_includeHEADERS
 
     # Copy just the library
     mkdir -p "$BUILD_SUBDIR"
@@ -198,6 +238,17 @@ cp "$BUILD_DIR/install-macos-arm64/include/espeak-ng/speak_lib.h" \
    "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/"
 cp "$BUILD_DIR/install-macos-arm64/include/espeak-ng/encoding.h" \
    "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/"
+
+# Duplicate headers inside espeak-ng/ to match upstream include paths
+mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/espeak-ng"
+cp "$BUILD_DIR/install-macos-arm64/include/espeak-ng/"*.h \
+   "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/espeak-ng/"
+
+# Adjust includes so the framework can locate headers without additional search paths
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/espeak_ng.h"
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/espeak-ng/espeak_ng.h"
 
 # Create umbrella header
 cat > "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/ESpeakNG.h" << 'EOF'
@@ -250,8 +301,12 @@ EOF
 # Copy espeak-ng-data as a bundle
 log "Copying espeak-ng-data to macOS framework..."
 ESPEAK_DATA_BUNDLE="$MACOS_FRAMEWORK_DIR/Versions/A/Resources/espeak-ng-data.bundle"
+INSTALL_DATA_SRC="$BUILD_DIR/install-macos-arm64/share/espeak-ng-data"
+if [ ! -d "$INSTALL_DATA_SRC" ]; then
+    error "Expected compiled data at $INSTALL_DATA_SRC"
+fi
 mkdir -p "$ESPEAK_DATA_BUNDLE/espeak-ng-data"
-cp -R "$SCRIPT_DIR/espeak-ng-data"/* "$ESPEAK_DATA_BUNDLE/espeak-ng-data/"
+cp -R "$INSTALL_DATA_SRC/"* "$ESPEAK_DATA_BUNDLE/espeak-ng-data/"
 
 cat > "$ESPEAK_DATA_BUNDLE/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -295,6 +350,15 @@ cp "$BUILD_DIR/install-ios-arm64/include/espeak-ng/speak_lib.h" \
 cp "$BUILD_DIR/install-ios-arm64/include/espeak-ng/encoding.h" \
    "$IOS_FRAMEWORK_DIR/Headers/"
 
+mkdir -p "$IOS_FRAMEWORK_DIR/Headers/espeak-ng"
+cp "$BUILD_DIR/install-ios-arm64/include/espeak-ng/"*.h \
+   "$IOS_FRAMEWORK_DIR/Headers/espeak-ng/"
+
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$IOS_FRAMEWORK_DIR/Headers/espeak_ng.h"
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$IOS_FRAMEWORK_DIR/Headers/espeak-ng/espeak_ng.h"
+
 cat > "$IOS_FRAMEWORK_DIR/Headers/ESpeakNG.h" << 'EOF'
 #import <ESpeakNG/espeak_ng.h>
 #import <ESpeakNG/speak_lib.h>
@@ -337,7 +401,7 @@ EOF
 log "Copying espeak-ng-data to iOS framework..."
 IOS_ESPEAK_DATA_BUNDLE="$IOS_FRAMEWORK_DIR/espeak-ng-data.bundle"
 mkdir -p "$IOS_ESPEAK_DATA_BUNDLE/espeak-ng-data"
-cp -R "$SCRIPT_DIR/espeak-ng-data"/* "$IOS_ESPEAK_DATA_BUNDLE/espeak-ng-data/"
+cp -R "$INSTALL_DATA_SRC/"* "$IOS_ESPEAK_DATA_BUNDLE/espeak-ng-data/"
 
 cat > "$IOS_ESPEAK_DATA_BUNDLE/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -371,6 +435,15 @@ cp "$BUILD_DIR/install-iossimulator-arm64/include/espeak-ng/speak_lib.h" \
    "$IOS_SIM_FRAMEWORK_DIR/Headers/"
 cp "$BUILD_DIR/install-iossimulator-arm64/include/espeak-ng/encoding.h" \
    "$IOS_SIM_FRAMEWORK_DIR/Headers/"
+
+mkdir -p "$IOS_SIM_FRAMEWORK_DIR/Headers/espeak-ng"
+cp "$BUILD_DIR/install-iossimulator-arm64/include/espeak-ng/"*.h \
+   "$IOS_SIM_FRAMEWORK_DIR/Headers/espeak-ng/"
+
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$IOS_SIM_FRAMEWORK_DIR/Headers/espeak_ng.h"
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$IOS_SIM_FRAMEWORK_DIR/Headers/espeak-ng/espeak_ng.h"
 
 cat > "$IOS_SIM_FRAMEWORK_DIR/Headers/ESpeakNG.h" << 'EOF'
 #import <ESpeakNG/espeak_ng.h>
@@ -413,7 +486,7 @@ EOF
 log "Copying espeak-ng-data to iOS Simulator framework..."
 IOS_SIM_ESPEAK_DATA_BUNDLE="$IOS_SIM_FRAMEWORK_DIR/espeak-ng-data.bundle"
 mkdir -p "$IOS_SIM_ESPEAK_DATA_BUNDLE/espeak-ng-data"
-cp -R "$SCRIPT_DIR/espeak-ng-data"/* "$IOS_SIM_ESPEAK_DATA_BUNDLE/espeak-ng-data/"
+cp -R "$INSTALL_DATA_SRC/"* "$IOS_SIM_ESPEAK_DATA_BUNDLE/espeak-ng-data/"
 
 cat > "$IOS_SIM_ESPEAK_DATA_BUNDLE/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>

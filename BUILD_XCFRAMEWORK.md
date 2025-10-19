@@ -53,12 +53,12 @@ The xcframework includes three platforms:
 - Data bundle at: `Versions/A/Resources/espeak-ng-data.bundle`
 
 ### iOS Device (arm64)
-- Minimum deployment target: iOS 16.0
+- Minimum deployment target: iOS 17.0
 - Flat framework structure
 - Data bundle at: `espeak-ng-data.bundle`
 
 ### iOS Simulator (arm64)
-- Minimum deployment target: iOS 16.0
+- Minimum deployment target: iOS 17.0
 - Flat framework structure
 - Data bundle at: `espeak-ng-data.bundle`
 
@@ -116,7 +116,7 @@ The script copies `espeak-ng-data/` from the source repository. Make sure this d
 ## Platform Support
 
 - macOS 14.0+ (arm64)
-- iOS 16.0+ (arm64 device and simulator)
+- iOS 17.0+ (arm64 device and simulator)
 
 ## License
 
