@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
 BUNDLE_IDENTIFIER="com.kokoro.espeakng"
-VERSION="1.52.0"
+VERSION="1.52.1"
 MIN_MACOS_VERSION="14.0"
 MIN_IOS_VERSION="17.0"
 
@@ -255,6 +255,9 @@ cat > "$MACOS_FRAMEWORK_DIR/Versions/A/Headers/ESpeakNG.h" << 'EOF'
 #import <ESpeakNG/espeak_ng.h>
 #import <ESpeakNG/speak_lib.h>
 #import <ESpeakNG/encoding.h>
+#import <ESpeakNG/espeak-ng/espeak_ng.h>
+#import <ESpeakNG/espeak-ng/speak_lib.h>
+#import <ESpeakNG/espeak-ng/encoding.h>
 EOF
 
 # Create module map
@@ -363,6 +366,9 @@ cat > "$IOS_FRAMEWORK_DIR/Headers/ESpeakNG.h" << 'EOF'
 #import <ESpeakNG/espeak_ng.h>
 #import <ESpeakNG/speak_lib.h>
 #import <ESpeakNG/encoding.h>
+#import <ESpeakNG/espeak-ng/espeak_ng.h>
+#import <ESpeakNG/espeak-ng/speak_lib.h>
+#import <ESpeakNG/espeak-ng/encoding.h>
 EOF
 
 cat > "$IOS_FRAMEWORK_DIR/Modules/module.modulemap" << 'EOF'
@@ -449,6 +455,9 @@ cat > "$IOS_SIM_FRAMEWORK_DIR/Headers/ESpeakNG.h" << 'EOF'
 #import <ESpeakNG/espeak_ng.h>
 #import <ESpeakNG/speak_lib.h>
 #import <ESpeakNG/encoding.h>
+#import <ESpeakNG/espeak-ng/espeak_ng.h>
+#import <ESpeakNG/espeak-ng/speak_lib.h>
+#import <ESpeakNG/espeak-ng/encoding.h>
 EOF
 
 cat > "$IOS_SIM_FRAMEWORK_DIR/Modules/module.modulemap" << 'EOF'

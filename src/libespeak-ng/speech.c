@@ -28,10 +28,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
+
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
+#endif
+
+#if defined(HAVE_DLFCN_H)
+#include <dlfcn.h>
+#endif
 
 #if USE_LIBPCAUDIO
 #include <pcaudiolib/audio.h>
@@ -244,18 +253,62 @@ int sync_espeak_terminated_msg(uint32_t unique_identifier, void *user_data)
 
 #endif
 
+static int check_data_path(const char *path, int allow_directory);
+
+#if defined(__APPLE__) && defined(HAVE_DLFCN_H)
+static int check_bundle_dir(const char *base_dir, const char *relative)
+{
+	char candidate[PATH_MAX];
+	int written = snprintf(candidate, sizeof(candidate), "%s%s", base_dir, relative);
+	if (written <= 0 || written >= (int)sizeof(candidate))
+		return 0;
+	return check_data_path(candidate, 1);
+}
+
+static int check_framework_data_path(void)
+{
+	struct dl_info info;
+	if (dladdr((const void *)&espeak_ng_InitializePath, &info) == 0 || !info.dli_fname)
+		return 0;
+
+	char binary_dir[PATH_MAX];
+	if (strlen(info.dli_fname) >= sizeof(binary_dir))
+		return 0;
+
+	strncpy(binary_dir, info.dli_fname, sizeof(binary_dir));
+	binary_dir[sizeof(binary_dir) - 1] = '\0';
+
+	char *slash = strrchr(binary_dir, '/');
+	if (!slash)
+		return 0;
+	*slash = '\0';
+
+	if (check_bundle_dir(binary_dir, "/Resources/espeak-ng-data.bundle"))
+		return 1;
+
+	if (check_bundle_dir(binary_dir, "/espeak-ng-data.bundle"))
+		return 1;
+
+	return 0;
+}
+#endif
+
 static int check_data_path(const char *path, int allow_directory)
 {
 	if (!path) return 0;
 
-	snprintf(path_home, sizeof(path_home), "%s/espeak-ng-data", path);
-	if (GetFileLength(path_home) == -EISDIR)
+	int written = snprintf(path_home, sizeof(path_home), "%s/espeak-ng-data", path);
+	if (written > 0 && written < (int)sizeof(path_home) &&
+	    GetFileLength(path_home) == -EISDIR)
 		return 1;
 
 	if (!allow_directory)
 		return 0;
 
-	snprintf(path_home, sizeof(path_home), "%s", path);
+	written = snprintf(path_home, sizeof(path_home), "%s", path);
+	if (written <= 0 || written >= (int)sizeof(path_home))
+		return 0;
+
 	return GetFileLength(path_home) == -EISDIR;
 }
 
@@ -333,6 +386,11 @@ ESPEAK_NG_API void espeak_ng_InitializePath(const char *path)
 
 	if (check_data_path(getenv("HOME"), 0))
 		return;
+
+#if defined(__APPLE__) && defined(HAVE_DLFCN_H)
+	if (check_framework_data_path())
+		return;
+#endif
 #endif
 
 	strcpy(path_home, PATH_ESPEAK_DATA);
