@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
 BUNDLE_IDENTIFIER="com.kokoro.espeakng"
-VERSION="1.52.1"
+VERSION="1.52.2"
 MIN_MACOS_VERSION="14.0"
 MIN_IOS_VERSION="17.0"
 
