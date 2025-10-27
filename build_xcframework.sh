@@ -30,6 +30,81 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+verify_plist_executable() {
+    local plist_path="$1"
+    local expected="$2"
+
+    if [ ! -f "$plist_path" ]; then
+        error "Missing Info.plist at $plist_path"
+    fi
+
+    local actual
+    actual=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist_path" 2>/dev/null || true)
+    if [ "$actual" != "$expected" ]; then
+        error "Expected CFBundleExecutable=\"$expected\" in $plist_path but found \"$actual\""
+    fi
+}
+
+verify_symlink() {
+    local link_path="$1"
+    local expected_target="$2"
+
+    if [ ! -L "$link_path" ]; then
+        error "Expected symlink at $link_path"
+    fi
+
+    local actual_target
+    actual_target=$(readlink "$link_path")
+    if [ "$actual_target" != "$expected_target" ]; then
+        error "Symlink $link_path points to \"$actual_target\"; expected \"$expected_target\""
+    fi
+}
+
+verify_adhoc_signature() {
+    local binary_path="$1"
+
+    if [ ! -f "$binary_path" ]; then
+        error "Expected binary at $binary_path"
+    fi
+
+    local codesign_info
+    if ! codesign_info=$(codesign -dv --verbose=4 "$binary_path" 2>&1); then
+        error "codesign failed for $binary_path"
+    fi
+
+    if ! grep -q "Signature=adhoc" <<< "$codesign_info"; then
+        error "Binary $binary_path is not using an ad-hoc signature"
+    fi
+}
+
+verify_macos_framework() {
+    local framework_path="$1"
+    local binary_rel="Versions/A/ESpeakNG"
+
+    log "Verifying macOS framework at $framework_path..."
+    verify_plist_executable "$framework_path/Versions/A/Resources/Info.plist" "ESpeakNG"
+    verify_symlink "$framework_path/ESPeakNG" "$binary_rel"
+    verify_symlink "$framework_path/Headers" "Versions/A/Headers"
+    verify_symlink "$framework_path/Modules" "Versions/A/Modules"
+    verify_symlink "$framework_path/Resources" "Versions/A/Resources"
+    verify_symlink "$framework_path/Versions/Current" "A"
+    verify_adhoc_signature "$framework_path/$binary_rel"
+}
+
+verify_ios_framework() {
+    local framework_path="$1"
+
+    log "Verifying iOS framework at $framework_path..."
+    verify_plist_executable "$framework_path/Info.plist" "ESpeakNG"
+    if [ ! -f "$framework_path/ESPeakNG" ]; then
+        error "Expected binary at $framework_path/ESPeakNG"
+    fi
+
+    if [ ! -d "$framework_path/espeak-ng-data.bundle" ]; then
+        error "Missing espeak-ng-data.bundle in $framework_path"
+    fi
+}
+
 # Clean previous builds
 log "Cleaning previous builds..."
 rm -rf "$BUILD_DIR"
@@ -333,6 +408,8 @@ ln -sf Versions/A/Resources ./Resources
 ln -sf A Versions/Current
 cd "$SCRIPT_DIR"
 
+verify_macos_framework "$MACOS_FRAMEWORK_DIR"
+
 # Create framework for iOS device
 log "Creating iOS device framework..."
 IOS_FRAMEWORK_DIR="$BUILD_DIR/ios/ESpeakNG.framework"
@@ -422,6 +499,8 @@ cat > "$IOS_ESPEAK_DATA_BUNDLE/Info.plist" << EOF
 </plist>
 EOF
 
+verify_ios_framework "$IOS_FRAMEWORK_DIR"
+
 # Create framework for iOS Simulator
 log "Creating iOS Simulator framework..."
 IOS_SIM_FRAMEWORK_DIR="$BUILD_DIR/ios-simulator/ESpeakNG.framework"
@@ -509,6 +588,8 @@ cat > "$IOS_SIM_ESPEAK_DATA_BUNDLE/Info.plist" << EOF
 </dict>
 </plist>
 EOF
+
+verify_ios_framework "$IOS_SIM_FRAMEWORK_DIR"
 
 # Create xcframework
 log "Creating xcframework..."
