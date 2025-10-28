@@ -1,12 +1,13 @@
 #!/bin/bash
 set -e
 
-# Build script for ESpeakNG.xcframework with iOS and macOS support (arm64 only)
+# Build script for ESpeakNG.xcframework with iOS and macOS support (arm64 + x86_64)
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
-BUNDLE_IDENTIFIER="com.kokoro.espeakng"
+FRAMEWORK_EXECUTABLE="$FRAMEWORK_NAME"
+BUNDLE_IDENTIFIER="com.fluidinference.espeakng"
 VERSION="1.52.2"
 MIN_MACOS_VERSION="14.0"
 MIN_IOS_VERSION="17.0"
@@ -45,6 +46,10 @@ verify_plist_executable() {
     fi
 }
 
+# Verify that a framework symlink matches Apple's expected macOS layout.
+# App Store validation enforces `Framework.framework/ESpeakNG -> Versions/Current/ESpeakNG`
+# (and the companion Headers/Modules/Resources symlinks), so we fail fast here if the
+# structure drifts.
 verify_symlink() {
     local link_path="$1"
     local expected_target="$2"
@@ -60,6 +65,8 @@ verify_symlink() {
     fi
 }
 
+# Ensure the macOS binary remains ad-hoc signed. Shipping a pre-signed v1 binary triggers
+# Apple review errors; letting the host app resign the framework is the supported path.
 verify_adhoc_signature() {
     local binary_path="$1"
 
@@ -79,10 +86,10 @@ verify_adhoc_signature() {
 
 verify_macos_framework() {
     local framework_path="$1"
-    local binary_rel="Versions/A/ESpeakNG"
+    local binary_rel="Versions/A/$FRAMEWORK_EXECUTABLE"
 
     log "Verifying macOS framework at $framework_path..."
-    verify_plist_executable "$framework_path/Versions/A/Resources/Info.plist" "ESpeakNG"
+    verify_plist_executable "$framework_path/Versions/A/Resources/Info.plist" "$FRAMEWORK_EXECUTABLE"
     verify_symlink "$framework_path/ESPeakNG" "$binary_rel"
     verify_symlink "$framework_path/Headers" "Versions/A/Headers"
     verify_symlink "$framework_path/Modules" "Versions/A/Modules"
@@ -95,9 +102,12 @@ verify_ios_framework() {
     local framework_path="$1"
 
     log "Verifying iOS framework at $framework_path..."
-    verify_plist_executable "$framework_path/Info.plist" "ESpeakNG"
-    if [ ! -f "$framework_path/ESPeakNG" ]; then
-        error "Expected binary at $framework_path/ESPeakNG"
+    verify_plist_executable "$framework_path/Info.plist" "$FRAMEWORK_EXECUTABLE"
+    if [ ! -f "$framework_path/$FRAMEWORK_EXECUTABLE" ]; then
+        error "Expected binary at $framework_path/$FRAMEWORK_EXECUTABLE"
+    fi
+    if [ ! -L "$framework_path/ESPeakNG" ] && [ ! -f "$framework_path/ESPeakNG" ]; then
+        error "Expected compatibility link at $framework_path/ESPeakNG"
     fi
 
     if [ ! -d "$framework_path/espeak-ng-data.bundle" ]; then
@@ -159,12 +169,16 @@ build_platform() {
 
     local COMMON_CFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH -O2"
     local COMMON_LDFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH"
+    local CC_WITH_TARGET="clang -target $TARGET_TRIPLE -isysroot $SDK_PATH"
+    local CXX_WITH_TARGET="clang++ -target $TARGET_TRIPLE -isysroot $SDK_PATH"
 
     local CONFIG_ENV=(
         "SDKROOT=$SDK_PATH"
         "CFLAGS=$COMMON_CFLAGS"
         "CXXFLAGS=$COMMON_CFLAGS"
         "LDFLAGS=$COMMON_LDFLAGS"
+        "CC=$CC_WITH_TARGET"
+        "CXX=$CXX_WITH_TARGET"
     )
     if [ -n "$DEPLOYMENT_ENV" ]; then
         CONFIG_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
@@ -188,11 +202,28 @@ build_platform() {
     if [ -n "$DEPLOYMENT_ENV" ]; then
         BUILD_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
     fi
-    env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu)
+    local BUILD_TARGET="all"
+    local INSTALL_CMD=("make" "install")
+    if [ "$PLATFORM" = "macos" ] && [ "$ARCH" != "arm64" ]; then
+        BUILD_TARGET="src/libespeak-ng.la"
+        INSTALL_CMD=()
+    fi
+
+    if [ "$BUILD_TARGET" = "all" ]; then
+        env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu)
+    else
+        env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu) "$BUILD_TARGET"
+    fi
 
     # Install
-    log "Installing for $PLATFORM $ARCH..."
-    env "${BUILD_ENV[@]}" make install
+    if [ "${#INSTALL_CMD[@]}" -eq 0 ]; then
+        log "Staging library for $PLATFORM $ARCH (skipping make install)..."
+        mkdir -p "$INSTALL_DIR/lib"
+        cp "$SCRIPT_DIR/src/.libs/libespeak-ng.1.dylib" "$INSTALL_DIR/lib/libespeak-ng.1.dylib"
+    else
+        log "Installing for $PLATFORM $ARCH..."
+        env "${BUILD_ENV[@]}" "${INSTALL_CMD[@]}"
+    fi
 
     # Save the library
     mkdir -p "$BUILD_SUBDIR"
@@ -209,6 +240,8 @@ build_platform() {
 # Build macOS first (we need this to compile the data)
 log "Building macOS platform (will be used to compile espeak-ng-data)..."
 build_platform "macos" "arm64" "macosx" "$MIN_MACOS_VERSION"
+log "Building macOS platform for Intel (x86_64)..."
+build_platform "macos" "x86_64" "macosx" "$MIN_MACOS_VERSION"
 
 # Now build iOS platforms without trying to compile data
 log "Building iOS platforms (will reuse espeak-ng-data from macOS build)..."
@@ -246,12 +279,16 @@ build_ios_platform() {
 
     local COMMON_CFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH -O2"
     local COMMON_LDFLAGS="-target $TARGET_TRIPLE $MIN_VERSION_FLAG -isysroot $SDK_PATH"
+    local CC_WITH_TARGET="clang -target $TARGET_TRIPLE -isysroot $SDK_PATH"
+    local CXX_WITH_TARGET="clang++ -target $TARGET_TRIPLE -isysroot $SDK_PATH"
 
     local CONFIG_ENV=(
         "SDKROOT=$SDK_PATH"
         "CFLAGS=$COMMON_CFLAGS"
         "CXXFLAGS=$COMMON_CFLAGS"
         "LDFLAGS=$COMMON_LDFLAGS"
+        "CC=$CC_WITH_TARGET"
+        "CXX=$CXX_WITH_TARGET"
     )
     if [ -n "$DEPLOYMENT_ENV" ]; then
         CONFIG_ENV+=("$DEPLOYMENT_ENV=$MIN_VERSION")
@@ -281,7 +318,13 @@ build_ios_platform() {
 
     # Install
     log "Installing for $PLATFORM $ARCH..."
-    env "${BUILD_ENV[@]}" make install-exec install-espeak_includeHEADERS install-espeak_ng_includeHEADERS
+    if [ "$PLATFORM" = "iossimulator" ] && [ "$ARCH" != "arm64" ]; then
+        log "Staging library for $PLATFORM $ARCH (skipping make install)..."
+        mkdir -p "$INSTALL_DIR/lib"
+        cp "$SCRIPT_DIR/src/.libs/libespeak-ng.1.dylib" "$INSTALL_DIR/lib/libespeak-ng.1.dylib"
+    else
+        env "${BUILD_ENV[@]}" make install-exec install-espeak_includeHEADERS install-espeak_ng_includeHEADERS
+    fi
 
     # Copy just the library
     mkdir -p "$BUILD_SUBDIR"
@@ -292,6 +335,8 @@ build_ios_platform() {
 
 build_ios_platform "ios" "arm64" "iphoneos" "$MIN_IOS_VERSION"
 build_ios_platform "iossimulator" "arm64" "iphonesimulator" "$MIN_IOS_VERSION"
+log "Building iOS Simulator platform for Intel (x86_64)..."
+build_ios_platform "iossimulator" "x86_64" "iphonesimulator" "$MIN_IOS_VERSION"
 
 # Create framework for macOS
 log "Creating macOS framework..."
@@ -300,11 +345,13 @@ mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Headers"
 mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Modules"
 mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Resources"
 
-cp "$BUILD_DIR/build-macos-arm64/libespeak-ng.1.dylib" \
-   "$MACOS_FRAMEWORK_DIR/Versions/A/ESpeakNG"
+lipo -create \
+    "$BUILD_DIR/build-macos-arm64/libespeak-ng.1.dylib" \
+    "$BUILD_DIR/build-macos-x86_64/libespeak-ng.1.dylib" \
+    -output "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESpeakNG.framework/Versions/A/ESpeakNG" \
-    "$MACOS_FRAMEWORK_DIR/Versions/A/ESpeakNG"
+install_name_tool -id "@rpath/ESpeakNG.framework/Versions/A/$FRAMEWORK_EXECUTABLE" \
+    "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
 
 # Copy headers
 cp "$BUILD_DIR/install-macos-arm64/include/espeak-ng/espeak_ng.h" \
@@ -353,7 +400,7 @@ cat > "$MACOS_FRAMEWORK_DIR/Versions/A/Resources/Info.plist" << EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>ESpeakNG</string>
+    <string>$FRAMEWORK_EXECUTABLE</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_IDENTIFIER</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -401,7 +448,7 @@ EOF
 
 # Create framework symbolic links
 cd "$MACOS_FRAMEWORK_DIR"
-ln -sf Versions/A/ESpeakNG ./ESpeakNG
+ln -sf Versions/A/$FRAMEWORK_EXECUTABLE ./ESPeakNG
 ln -sf Versions/A/Headers ./Headers
 ln -sf Versions/A/Modules ./Modules
 ln -sf Versions/A/Resources ./Resources
@@ -417,10 +464,11 @@ mkdir -p "$IOS_FRAMEWORK_DIR/Headers"
 mkdir -p "$IOS_FRAMEWORK_DIR/Modules"
 
 cp "$BUILD_DIR/build-ios-arm64/libespeak-ng.1.dylib" \
-   "$IOS_FRAMEWORK_DIR/ESpeakNG"
+   "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESpeakNG.framework/ESpeakNG" \
-    "$IOS_FRAMEWORK_DIR/ESpeakNG"
+install_name_tool -id "@rpath/ESpeakNG.framework/$FRAMEWORK_EXECUTABLE" \
+    "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
+
 
 # Copy headers
 cp "$BUILD_DIR/install-ios-arm64/include/espeak-ng/espeak_ng.h" \
@@ -463,7 +511,7 @@ cat > "$IOS_FRAMEWORK_DIR/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>ESpeakNG</string>
+    <string>$FRAMEWORK_EXECUTABLE</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_IDENTIFIER</string>
     <key>CFBundleName</key>
@@ -507,11 +555,14 @@ IOS_SIM_FRAMEWORK_DIR="$BUILD_DIR/ios-simulator/ESpeakNG.framework"
 mkdir -p "$IOS_SIM_FRAMEWORK_DIR/Headers"
 mkdir -p "$IOS_SIM_FRAMEWORK_DIR/Modules"
 
-cp "$BUILD_DIR/build-iossimulator-arm64/libespeak-ng.1.dylib" \
-   "$IOS_SIM_FRAMEWORK_DIR/ESpeakNG"
+lipo -create \
+    "$BUILD_DIR/build-iossimulator-arm64/libespeak-ng.1.dylib" \
+    "$BUILD_DIR/build-iossimulator-x86_64/libespeak-ng.1.dylib" \
+    -output "$IOS_SIM_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESpeakNG.framework/ESpeakNG" \
-    "$IOS_SIM_FRAMEWORK_DIR/ESpeakNG"
+install_name_tool -id "@rpath/ESPeakNG.framework/$FRAMEWORK_EXECUTABLE" \
+    "$IOS_SIM_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
+
 
 # Copy headers
 cp "$BUILD_DIR/install-iossimulator-arm64/include/espeak-ng/espeak_ng.h" \
@@ -553,7 +604,7 @@ cat > "$IOS_SIM_FRAMEWORK_DIR/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>ESpeakNG</string>
+    <string>$FRAMEWORK_EXECUTABLE</string>
     <key>CFBundleIdentifier</key>
     <string>$BUNDLE_IDENTIFIER</string>
     <key>CFBundleName</key>
@@ -611,12 +662,12 @@ if [ -d "$XCFRAMEWORK_PATH" ]; then
     log "XCFramework size: $SIZE"
 
     log "Platforms:"
-    log "  - macOS (arm64)"
-    lipo -info "$MACOS_FRAMEWORK_DIR/Versions/A/ESpeakNG"
+    log "  - macOS (arm64 + x86_64)"
+    lipo -info "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
     log "  - iOS device (arm64)"
-    file "$IOS_FRAMEWORK_DIR/ESpeakNG"
-    log "  - iOS Simulator (arm64)"
-    file "$IOS_SIM_FRAMEWORK_DIR/ESpeakNG"
+    lipo -info "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
+    log "  - iOS Simulator (arm64 + x86_64)"
+    lipo -info "$IOS_SIM_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
     log ""
     log "Build complete!"
