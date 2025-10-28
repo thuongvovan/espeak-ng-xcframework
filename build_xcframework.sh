@@ -87,13 +87,14 @@ verify_adhoc_signature() {
 verify_macos_framework() {
     local framework_path="$1"
     local binary_rel="Versions/A/$FRAMEWORK_EXECUTABLE"
+    local framework_link_target="Versions/Current/$FRAMEWORK_EXECUTABLE"
 
     log "Verifying macOS framework at $framework_path..."
     verify_plist_executable "$framework_path/Versions/A/Resources/Info.plist" "$FRAMEWORK_EXECUTABLE"
-    verify_symlink "$framework_path/ESPeakNG" "$binary_rel"
-    verify_symlink "$framework_path/Headers" "Versions/A/Headers"
-    verify_symlink "$framework_path/Modules" "Versions/A/Modules"
-    verify_symlink "$framework_path/Resources" "Versions/A/Resources"
+    verify_symlink "$framework_path/ESPeakNG" "$framework_link_target"
+    verify_symlink "$framework_path/Headers" "Versions/Current/Headers"
+    verify_symlink "$framework_path/Modules" "Versions/Current/Modules"
+    verify_symlink "$framework_path/Resources" "Versions/Current/Resources"
     verify_symlink "$framework_path/Versions/Current" "A"
     verify_adhoc_signature "$framework_path/$binary_rel"
 }
@@ -448,10 +449,10 @@ EOF
 
 # Create framework symbolic links
 cd "$MACOS_FRAMEWORK_DIR"
-ln -sf Versions/A/$FRAMEWORK_EXECUTABLE ./ESPeakNG
-ln -sf Versions/A/Headers ./Headers
-ln -sf Versions/A/Modules ./Modules
-ln -sf Versions/A/Resources ./Resources
+ln -sf Versions/Current/$FRAMEWORK_EXECUTABLE "./$FRAMEWORK_EXECUTABLE"
+ln -sf Versions/Current/Headers ./Headers
+ln -sf Versions/Current/Modules ./Modules
+ln -sf Versions/Current/Resources ./Resources
 ln -sf A Versions/Current
 cd "$SCRIPT_DIR"
 
