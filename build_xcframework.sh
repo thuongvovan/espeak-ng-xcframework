@@ -7,6 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
 FRAMEWORK_EXECUTABLE="$FRAMEWORK_NAME"
+XCFRAMEWORK_NAME="ESPeakNG.xcframework"
 BUNDLE_IDENTIFIER="com.fluidinference.espeakng"
 VERSION="1.52.2"
 MIN_MACOS_VERSION="14.0"
@@ -341,7 +342,7 @@ build_ios_platform "iossimulator" "x86_64" "iphonesimulator" "$MIN_IOS_VERSION"
 
 # Create framework for macOS
 log "Creating macOS framework..."
-MACOS_FRAMEWORK_DIR="$BUILD_DIR/macos/ESpeakNG.framework"
+MACOS_FRAMEWORK_DIR="$BUILD_DIR/macos/$FRAMEWORK_NAME.framework"
 mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Headers"
 mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Modules"
 mkdir -p "$MACOS_FRAMEWORK_DIR/Versions/A/Resources"
@@ -351,7 +352,7 @@ lipo -create \
     "$BUILD_DIR/build-macos-x86_64/libespeak-ng.1.dylib" \
     -output "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESpeakNG.framework/Versions/A/$FRAMEWORK_EXECUTABLE" \
+install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/Versions/A/$FRAMEWORK_EXECUTABLE" \
     "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
 
 # Copy headers
@@ -460,14 +461,14 @@ verify_macos_framework "$MACOS_FRAMEWORK_DIR"
 
 # Create framework for iOS device
 log "Creating iOS device framework..."
-IOS_FRAMEWORK_DIR="$BUILD_DIR/ios/ESpeakNG.framework"
+IOS_FRAMEWORK_DIR="$BUILD_DIR/ios/$FRAMEWORK_NAME.framework"
 mkdir -p "$IOS_FRAMEWORK_DIR/Headers"
 mkdir -p "$IOS_FRAMEWORK_DIR/Modules"
 
 cp "$BUILD_DIR/build-ios-arm64/libespeak-ng.1.dylib" \
    "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESpeakNG.framework/$FRAMEWORK_EXECUTABLE" \
+install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/$FRAMEWORK_EXECUTABLE" \
     "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
 
@@ -552,7 +553,7 @@ verify_ios_framework "$IOS_FRAMEWORK_DIR"
 
 # Create framework for iOS Simulator
 log "Creating iOS Simulator framework..."
-IOS_SIM_FRAMEWORK_DIR="$BUILD_DIR/ios-simulator/ESpeakNG.framework"
+IOS_SIM_FRAMEWORK_DIR="$BUILD_DIR/ios-simulator/$FRAMEWORK_NAME.framework"
 mkdir -p "$IOS_SIM_FRAMEWORK_DIR/Headers"
 mkdir -p "$IOS_SIM_FRAMEWORK_DIR/Modules"
 
@@ -561,7 +562,7 @@ lipo -create \
     "$BUILD_DIR/build-iossimulator-x86_64/libespeak-ng.1.dylib" \
     -output "$IOS_SIM_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
-install_name_tool -id "@rpath/ESPeakNG.framework/$FRAMEWORK_EXECUTABLE" \
+install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/$FRAMEWORK_EXECUTABLE" \
     "$IOS_SIM_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
 
 
@@ -645,7 +646,7 @@ verify_ios_framework "$IOS_SIM_FRAMEWORK_DIR"
 
 # Create xcframework
 log "Creating xcframework..."
-XCFRAMEWORK_PATH="$BUILD_DIR/ESpeakNG.xcframework"
+XCFRAMEWORK_PATH="$BUILD_DIR/$XCFRAMEWORK_NAME"
 rm -rf "$XCFRAMEWORK_PATH"
 
 xcodebuild -create-xcframework \
@@ -675,7 +676,7 @@ if [ -d "$XCFRAMEWORK_PATH" ]; then
     log "XCFramework location: $XCFRAMEWORK_PATH"
     log ""
     log "To install in FluidAudio, run:"
-    log "  rm -rf ../FluidAudio/Sources/FluidAudio/Frameworks/ESpeakNG.xcframework"
+    log "  rm -rf ../FluidAudio/Sources/FluidAudio/Frameworks/$XCFRAMEWORK_NAME"
     log "  cp -R $XCFRAMEWORK_PATH ../FluidAudio/Sources/FluidAudio/Frameworks/"
 else
     error "Failed to create xcframework"
