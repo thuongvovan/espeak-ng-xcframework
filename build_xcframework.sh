@@ -7,7 +7,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
 FRAMEWORK_EXECUTABLE="$FRAMEWORK_NAME"
-XCFRAMEWORK_NAME="ESPeakNG.xcframework"
+XCFRAMEWORK_NAME="ESpeakNG.xcframework"
 BUNDLE_IDENTIFIER="com.fluidinference.espeakng"
 VERSION="1.52.2"
 MIN_MACOS_VERSION="14.0"
@@ -92,7 +92,7 @@ verify_macos_framework() {
 
     log "Verifying macOS framework at $framework_path..."
     verify_plist_executable "$framework_path/Versions/A/Resources/Info.plist" "$FRAMEWORK_EXECUTABLE"
-    verify_symlink "$framework_path/ESPeakNG" "$framework_link_target"
+    verify_symlink "$framework_path/ESpeakNG" "$framework_link_target"
     verify_symlink "$framework_path/Headers" "Versions/Current/Headers"
     verify_symlink "$framework_path/Modules" "Versions/Current/Modules"
     verify_symlink "$framework_path/Resources" "Versions/Current/Resources"
@@ -108,8 +108,8 @@ verify_ios_framework() {
     if [ ! -f "$framework_path/$FRAMEWORK_EXECUTABLE" ]; then
         error "Expected binary at $framework_path/$FRAMEWORK_EXECUTABLE"
     fi
-    if [ ! -L "$framework_path/ESPeakNG" ] && [ ! -f "$framework_path/ESPeakNG" ]; then
-        error "Expected compatibility link at $framework_path/ESPeakNG"
+    if [ ! -L "$framework_path/ESpeakNG" ] && [ ! -f "$framework_path/ESpeakNG" ]; then
+        error "Expected compatibility link at $framework_path/ESpeakNG"
     fi
 
     if [ ! -d "$framework_path/espeak-ng-data.bundle" ]; then
@@ -644,6 +644,30 @@ EOF
 
 verify_ios_framework "$IOS_SIM_FRAMEWORK_DIR"
 
+# Sort Info.plist AvailableLibraries by LibraryIdentifier
+sort_xcframework_plist() {
+    local plist_path="$1"
+
+    python3 << PYTHON_SORT
+import plistlib
+
+plist_path = "$plist_path"
+
+with open(plist_path, 'rb') as f:
+    plist = plistlib.load(f)
+
+# Sort AvailableLibraries by LibraryIdentifier
+if 'AvailableLibraries' in plist:
+    plist['AvailableLibraries'] = sorted(
+        plist['AvailableLibraries'],
+        key=lambda x: x.get('LibraryIdentifier', '')
+    )
+
+with open(plist_path, 'wb') as f:
+    plistlib.dump(plist, f, sort_keys=True)
+PYTHON_SORT
+}
+
 # Create xcframework
 log "Creating xcframework..."
 XCFRAMEWORK_PATH="$BUILD_DIR/$XCFRAMEWORK_NAME"
@@ -654,6 +678,10 @@ xcodebuild -create-xcframework \
     -framework "$IOS_FRAMEWORK_DIR" \
     -framework "$IOS_SIM_FRAMEWORK_DIR" \
     -output "$XCFRAMEWORK_PATH"
+
+# Sort the Info.plist for consistent diffs
+log "Sorting Info.plist..."
+sort_xcframework_plist "$XCFRAMEWORK_PATH/Info.plist"
 
 # Verify the xcframework
 log "Verifying xcframework..."
