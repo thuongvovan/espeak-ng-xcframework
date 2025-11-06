@@ -1,6 +1,6 @@
-# Building ESpeakNG.xcframework for iOS and macOS
+# Building ESpeakNG.xcframework for Apple Platforms
 
-This document describes how to build an xcframework for eSpeak NG that supports both iOS and macOS (arm64 only) for use in Swift projects.
+This document describes how to build an xcframework for eSpeak NG that supports macOS, Mac Catalyst, and iOS (device + simulator) for use in Swift projects.
 
 ## Prerequisites
 
@@ -26,6 +26,7 @@ This will:
 - Package the framework with proper headers and module map
 - Include the espeak-ng-data bundle
 - Create the final ESpeakNG.xcframework
+- Include dedicated variants for macOS, Mac Catalyst, iOS devices, and the iOS simulator
 
 2. **Find the output:**
 
@@ -45,19 +46,24 @@ cp -R build/ESpeakNG.xcframework ../FluidAudio/Sources/FluidAudio/Frameworks/
 
 ## Framework Structure
 
-The xcframework includes three platforms:
+The xcframework includes four platforms:
 
-### macOS (arm64)
+### macOS (arm64 + x86_64)
 - Minimum deployment target: macOS 14.0
 - Framework structure with versioned layout
 - Data bundle at: `Versions/A/Resources/espeak-ng-data.bundle`
+
+### Mac Catalyst (arm64 + x86_64)
+- Minimum deployment target: macOS 14.0
+- Flat framework structure
+- Data bundle at: `espeak-ng-data.bundle`
 
 ### iOS Device (arm64)
 - Minimum deployment target: iOS 17.0
 - Flat framework structure
 - Data bundle at: `espeak-ng-data.bundle`
 
-### iOS Simulator (arm64)
+### iOS Simulator (arm64 + x86_64)
 - Minimum deployment target: iOS 17.0
 - Flat framework structure
 - Data bundle at: `espeak-ng-data.bundle`
@@ -107,7 +113,7 @@ The script copies `espeak-ng-data/` from the source repository. Make sure this d
 - The framework uses a bundle identifier of `com.kokoro.espeakng`
 - The data bundle is embedded in each framework variant
 - The library is set up to be used with `@rpath` for flexible linking
-- Only arm64 architecture is built (Apple Silicon native)
+- macOS, Mac Catalyst, and iOS simulator variants ship as universal arm64 + x86_64 binaries; iOS devices remain arm64-only
 - The build process:
   1. Builds macOS framework first (needed to compile phoneme/dictionary data)
   2. Builds iOS frameworks reusing the compiled data from step 1
@@ -116,6 +122,7 @@ The script copies `espeak-ng-data/` from the source repository. Make sure this d
 ## Platform Support
 
 - macOS 14.0+ (arm64)
+- Mac Catalyst on macOS 14.0+ (arm64 + x86_64)
 - iOS 17.0+ (arm64 device and simulator)
 
 ## License

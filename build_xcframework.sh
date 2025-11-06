@@ -9,9 +9,10 @@ FRAMEWORK_NAME="ESpeakNG"
 FRAMEWORK_EXECUTABLE="$FRAMEWORK_NAME"
 XCFRAMEWORK_NAME="ESpeakNG.xcframework"
 BUNDLE_IDENTIFIER="com.fluidinference.espeakng"
-VERSION="1.52.2"
+VERSION="1.52.3"
 MIN_MACOS_VERSION="14.0"
 MIN_IOS_VERSION="17.0"
+MIN_MAC_CATALYST_VERSION="$MIN_MACOS_VERSION"
 
 # Colors for output
 RED='\033[0;31m'
@@ -340,6 +341,78 @@ build_ios_platform "iossimulator" "arm64" "iphonesimulator" "$MIN_IOS_VERSION"
 log "Building iOS Simulator platform for Intel (x86_64)..."
 build_ios_platform "iossimulator" "x86_64" "iphonesimulator" "$MIN_IOS_VERSION"
 
+build_maccatalyst_platform() {
+    local ARCH=$1
+    local IOS_MIN_VERSION=$2
+    local MACOS_MIN_VERSION=$3
+    local PLATFORM="maccatalyst"
+    local SDK="macosx"
+    local BUILD_SUBDIR="$BUILD_DIR/build-$PLATFORM-$ARCH"
+    local INSTALL_DIR="$BUILD_DIR/install-$PLATFORM-$ARCH"
+
+    log "Building for Mac Catalyst ($ARCH)..."
+
+    mkdir -p "$BUILD_SUBDIR"
+    mkdir -p "$INSTALL_DIR"
+
+    cd "$SCRIPT_DIR"
+    make distclean 2>/dev/null || true
+
+    SDK_PATH=$(xcrun --sdk $SDK --show-sdk-path)
+
+    local TARGET_TRIPLE="$ARCH-apple-ios${IOS_MIN_VERSION}-macabi"
+    local MACOS_MIN_FLAG="-mmacosx-version-min=$MACOS_MIN_VERSION"
+    local COMMON_CFLAGS="-target $TARGET_TRIPLE $MACOS_MIN_FLAG -isysroot $SDK_PATH -O2"
+    local COMMON_LDFLAGS="-target $TARGET_TRIPLE $MACOS_MIN_FLAG -isysroot $SDK_PATH"
+    local CC_WITH_TARGET="clang -target $TARGET_TRIPLE -isysroot $SDK_PATH"
+    local CXX_WITH_TARGET="clang++ -target $TARGET_TRIPLE -isysroot $SDK_PATH"
+
+    local CONFIG_ENV=(
+        "SDKROOT=$SDK_PATH"
+        "CFLAGS=$COMMON_CFLAGS"
+        "CXXFLAGS=$COMMON_CFLAGS"
+        "LDFLAGS=$COMMON_LDFLAGS"
+        "CC=$CC_WITH_TARGET"
+        "CXX=$CXX_WITH_TARGET"
+        "MACOSX_DEPLOYMENT_TARGET=$MACOS_MIN_VERSION"
+        "IPHONEOS_DEPLOYMENT_TARGET=$IOS_MIN_VERSION"
+    )
+
+    log "Configuring for Mac Catalyst $ARCH (SDK: $SDK)..."
+
+    env "${CONFIG_ENV[@]}" ./configure \
+        --host=$ARCH-apple-darwin \
+        --prefix="$INSTALL_DIR" \
+        --without-pcaudiolib \
+        --without-sonic \
+        --without-klatt \
+        --without-mbrola \
+        --without-speechplayer \
+        --without-async \
+        --disable-static \
+        --enable-shared
+
+    log "Compiling library for Mac Catalyst $ARCH..."
+    local BUILD_ENV=(
+        "SDKROOT=$SDK_PATH"
+        "MACOSX_DEPLOYMENT_TARGET=$MACOS_MIN_VERSION"
+        "IPHONEOS_DEPLOYMENT_TARGET=$IOS_MIN_VERSION"
+    )
+    env "${BUILD_ENV[@]}" make -j$(sysctl -n hw.ncpu) src/libespeak-ng.la
+
+    log "Installing for Mac Catalyst $ARCH..."
+    env "${BUILD_ENV[@]}" make install-exec install-espeak_includeHEADERS install-espeak_ng_includeHEADERS
+
+    mkdir -p "$BUILD_SUBDIR"
+    cp "$INSTALL_DIR/lib/libespeak-ng.1.dylib" "$BUILD_SUBDIR/"
+
+    make distclean 2>/dev/null || true
+}
+
+log "Building Mac Catalyst platforms..."
+build_maccatalyst_platform "arm64" "$MIN_IOS_VERSION" "$MIN_MAC_CATALYST_VERSION"
+build_maccatalyst_platform "x86_64" "$MIN_IOS_VERSION" "$MIN_MAC_CATALYST_VERSION"
+
 # Create framework for macOS
 log "Creating macOS framework..."
 MACOS_FRAMEWORK_DIR="$BUILD_DIR/macos/$FRAMEWORK_NAME.framework"
@@ -458,6 +531,101 @@ ln -sf A Versions/Current
 cd "$SCRIPT_DIR"
 
 verify_macos_framework "$MACOS_FRAMEWORK_DIR"
+
+# Create framework for Mac Catalyst
+log "Creating Mac Catalyst framework..."
+MACCATALYST_FRAMEWORK_DIR="$BUILD_DIR/mac-catalyst/$FRAMEWORK_NAME.framework"
+mkdir -p "$MACCATALYST_FRAMEWORK_DIR/Headers"
+mkdir -p "$MACCATALYST_FRAMEWORK_DIR/Modules"
+
+lipo -create \
+    "$BUILD_DIR/build-maccatalyst-arm64/libespeak-ng.1.dylib" \
+    "$BUILD_DIR/build-maccatalyst-x86_64/libespeak-ng.1.dylib" \
+    -output "$MACCATALYST_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
+
+install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/$FRAMEWORK_EXECUTABLE" \
+    "$MACCATALYST_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
+
+# Copy headers
+cp "$BUILD_DIR/install-maccatalyst-arm64/include/espeak-ng/espeak_ng.h" \
+   "$MACCATALYST_FRAMEWORK_DIR/Headers/"
+cp "$BUILD_DIR/install-maccatalyst-arm64/include/espeak-ng/speak_lib.h" \
+   "$MACCATALYST_FRAMEWORK_DIR/Headers/"
+cp "$BUILD_DIR/install-maccatalyst-arm64/include/espeak-ng/encoding.h" \
+   "$MACCATALYST_FRAMEWORK_DIR/Headers/"
+
+mkdir -p "$MACCATALYST_FRAMEWORK_DIR/Headers/espeak-ng"
+cp "$BUILD_DIR/install-maccatalyst-arm64/include/espeak-ng/"*.h \
+   "$MACCATALYST_FRAMEWORK_DIR/Headers/espeak-ng/"
+
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$MACCATALYST_FRAMEWORK_DIR/Headers/espeak_ng.h"
+perl -pi -e 's|#include <espeak-ng/speak_lib.h>|#include "speak_lib.h"|' \
+    "$MACCATALYST_FRAMEWORK_DIR/Headers/espeak-ng/espeak_ng.h"
+
+cat > "$MACCATALYST_FRAMEWORK_DIR/Headers/ESpeakNG.h" << 'EOF'
+#import <ESpeakNG/espeak_ng.h>
+#import <ESpeakNG/speak_lib.h>
+#import <ESpeakNG/encoding.h>
+#import <ESpeakNG/espeak-ng/espeak_ng.h>
+#import <ESpeakNG/espeak-ng/speak_lib.h>
+#import <ESpeakNG/espeak-ng/encoding.h>
+EOF
+
+cat > "$MACCATALYST_FRAMEWORK_DIR/Modules/module.modulemap" << 'EOF'
+framework module ESpeakNG {
+    umbrella header "ESpeakNG.h"
+    export *
+    module * { export * }
+}
+EOF
+
+cat > "$MACCATALYST_FRAMEWORK_DIR/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>$FRAMEWORK_EXECUTABLE</string>
+    <key>CFBundleIdentifier</key>
+    <string>$BUNDLE_IDENTIFIER</string>
+    <key>CFBundleName</key>
+    <string>ESpeakNG</string>
+    <key>CFBundlePackageType</key>
+    <string>FMWK</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>MinimumOSVersion</key>
+    <string>$MIN_MAC_CATALYST_VERSION</string>
+</dict>
+</plist>
+EOF
+
+log "Copying espeak-ng-data to Mac Catalyst framework..."
+MACCATALYST_ESPEAK_DATA_BUNDLE="$MACCATALYST_FRAMEWORK_DIR/espeak-ng-data.bundle"
+mkdir -p "$MACCATALYST_ESPEAK_DATA_BUNDLE/espeak-ng-data"
+cp -R "$INSTALL_DATA_SRC/"* "$MACCATALYST_ESPEAK_DATA_BUNDLE/espeak-ng-data/"
+
+cat > "$MACCATALYST_ESPEAK_DATA_BUNDLE/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>$BUNDLE_IDENTIFIER.data</string>
+    <key>CFBundleName</key>
+    <string>espeak-ng-data</string>
+</dict>
+</plist>
+EOF
+
+verify_ios_framework "$MACCATALYST_FRAMEWORK_DIR"
 
 # Create framework for iOS device
 log "Creating iOS device framework..."
@@ -675,6 +843,7 @@ rm -rf "$XCFRAMEWORK_PATH"
 
 xcodebuild -create-xcframework \
     -framework "$MACOS_FRAMEWORK_DIR" \
+    -framework "$MACCATALYST_FRAMEWORK_DIR" \
     -framework "$IOS_FRAMEWORK_DIR" \
     -framework "$IOS_SIM_FRAMEWORK_DIR" \
     -output "$XCFRAMEWORK_PATH"
@@ -694,6 +863,8 @@ if [ -d "$XCFRAMEWORK_PATH" ]; then
     log "Platforms:"
     log "  - macOS (arm64 + x86_64)"
     lipo -info "$MACOS_FRAMEWORK_DIR/Versions/A/$FRAMEWORK_EXECUTABLE"
+    log "  - Mac Catalyst (arm64 + x86_64)"
+    lipo -info "$MACCATALYST_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
     log "  - iOS device (arm64)"
     lipo -info "$IOS_FRAMEWORK_DIR/$FRAMEWORK_EXECUTABLE"
     log "  - iOS Simulator (arm64 + x86_64)"
