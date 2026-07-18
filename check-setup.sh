@@ -33,11 +33,10 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✨ Auto-Versioning Ready!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-BUILD_DATE=$(date +%Y%m%d)
-COMMIT_COUNT=$(git rev-list --count HEAD)
-AUTO_VERSION="1.52.3+fork+${BUILD_DATE}.${COMMIT_COUNT}"
+COMMIT_ID=$(git rev-parse --short HEAD)
+AUTO_VERSION="1.52.3+fork+${COMMIT_ID}"
 echo ""
-echo "📌 Version Format:"
+echo "📌 Version Format (commit-id based):"
 echo "   $AUTO_VERSION"
 echo ""
 echo "📌 How it works:"

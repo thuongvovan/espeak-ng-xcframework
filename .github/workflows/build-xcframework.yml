@@ -26,9 +26,8 @@ jobs:
       - name: Auto-generate version
         id: version
         run: |
-          BUILD_DATE=$(date +%Y%m%d)
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          VERSION="1.52.3+fork+${BUILD_DATE}.${COMMIT_COUNT}"
+          COMMIT_ID=$(git rev-parse --short HEAD)
+          VERSION="1.52.3+fork+${COMMIT_ID}"
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
@@ -48,4 +47,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
