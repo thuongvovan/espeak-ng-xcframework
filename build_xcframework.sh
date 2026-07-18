@@ -8,12 +8,12 @@ BUILD_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ESpeakNG"
 FRAMEWORK_EXECUTABLE="$FRAMEWORK_NAME"
 XCFRAMEWORK_NAME="ESpeakNG.xcframework"
-BUNDLE_IDENTIFIER="com.fluidinference.espeakng"
+BUNDLE_IDENTIFIER="org.espeakng.xcframework"
 
 # Auto-generate version: 1.52.3+fork+{short-commit-hash}
 BASE_VERSION="1.52.3"
 COMMIT_ID=$(cd "$SCRIPT_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "dev")
-VERSION="${BASE_VERSION}+fork+${COMMIT_ID}"
+VERSION="${BASE_VERSION}-${COMMIT_ID}"
 
 MIN_MACOS_VERSION="14.0"
 MIN_IOS_VERSION="17.0"
