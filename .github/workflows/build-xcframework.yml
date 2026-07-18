@@ -35,13 +35,13 @@ jobs:
       - name: Compress XCFramework
         run: |
           cd build
-          tar -czf ESpeakNG.xcframework.tar.gz ESpeakNG.xcframework/
+          zip -r ESpeakNG.xcframework.zip ESpeakNG.xcframework/
 
       - name: Create Release with Auto-Tag
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          files: build/ESpeakNG.xcframework.tar.gz
+          files: build/ESpeakNG.xcframework.zip
           draft: false
           prerelease: false
           generate_release_notes: true
