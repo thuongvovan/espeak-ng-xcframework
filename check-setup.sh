@@ -34,7 +34,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "✨ Auto-Versioning Ready!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 COMMIT_ID=$(git rev-parse --short HEAD)
-AUTO_VERSION="1.52.3+fork+${COMMIT_ID}"
+AUTO_VERSION="1.52.3-${COMMIT_ID}"
 echo ""
 echo "📌 Version Format (commit-id based):"
 echo "   $AUTO_VERSION"

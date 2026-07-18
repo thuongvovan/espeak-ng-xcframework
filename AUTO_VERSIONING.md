@@ -12,8 +12,8 @@ git push origin master
 GitHub Actions (Automatic)
         ↓
 ✅ Build XCFramework
-✅ Auto-generate version: 1.52.3+fork+4be52348
-✅ Create tag: v1.52.3+fork+4be52348
+✅ Auto-generate version: 1.52.3-4be52348
+✅ Create tag: v1.52.3-4be52348
 ✅ Create GitHub Release
 ✅ Upload artifacts
 ```
@@ -24,12 +24,11 @@ GitHub Actions (Automatic)
 
 **Automatic (mỗi commit):**
 ```
-1.52.3+fork+4be52348
-       ↑    ↑
-     fork  short-commit-id
+1.52.3-4be52348
+       ↑
+  short-commit-id
 ```
 
-- `fork` - Đánh dấu đây là fork
 - `4be52348` - Short commit hash (7 chars)
 
 ---
@@ -91,21 +90,20 @@ git tag -l
 ✅ **Commit-ID Based Versioning**
 - Each commit gets unique version
 - Based on short commit hash
-- Format: `1.52.3+fork+{short-hash}`
+- Format: `1.52.3-{short-hash}`
 
 ✅ **Never Conflicts**
-- Fork version separate from upstream
-- Clearly marked as `+fork+`
+- Each commit gets its own unique tag
 
 ---
 
 ## 📊 Example Release History
 
 ```
-Commit 4be52348: v1.52.3+fork+4be52348
-Commit 50b40cd6: v1.52.3+fork+50b40cd6
-Commit 0092379d: v1.52.3+fork+0092379d
-Commit c96d3934: v1.52.3+fork+c96d3934
+Commit 4be52348: v1.52.3-4be52348
+Commit 50b40cd6: v1.52.3-50b40cd6
+Commit 0092379d: v1.52.3-0092379d
+Commit c96d3934: v1.52.3-c96d3934
 ```
 
 Each commit = unique version & release!
@@ -127,8 +125,8 @@ Each commit = unique version & release!
 ```bash
 # Usually not an issue - workflow checks first
 # But if needed:
-git tag -d v1.52.3+fork+4be52348
-git push origin --delete v1.52.3+fork+4be52348
+git tag -d v1.52.3-4be52348
+git push origin --delete v1.52.3-4be52348
 ```
 
 ---

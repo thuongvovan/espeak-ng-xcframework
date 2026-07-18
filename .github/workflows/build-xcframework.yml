@@ -27,7 +27,7 @@ jobs:
         id: version
         run: |
           COMMIT_ID=$(git rev-parse --short HEAD)
-          VERSION="1.52.3+fork+${COMMIT_ID}"
+          VERSION="1.52.3-${COMMIT_ID}"
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
