@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-release:
     runs-on: macos-14
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -30,29 +32,13 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "✅ Auto-generated version: ${VERSION}"
-          echo "✅ Tag: ${TAG}"
 
       - name: Compress XCFramework
         run: |
           cd build
           tar -czf ESpeakNG.xcframework.tar.gz ESpeakNG.xcframework/
-          ls -lh ESpeakNG.xcframework.tar.gz
 
-      - name: Create and push tag
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "✅ Tag $TAG already exists, skipping tag creation"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "$TAG" -m "Auto-release: ${{ steps.version.outputs.version }}"
-            git push origin "$TAG"
-            echo "✅ Tag $TAG created and pushed"
-          fi
-
-      - name: Create Release
+      - name: Create Release with Auto-Tag
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -62,3 +48,4 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
