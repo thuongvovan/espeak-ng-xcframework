@@ -1,0 +1,49 @@
+name: Build & Release XCFramework
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup build dependencies
+        run: |
+          brew install autoconf automake libtool
+
+      - name: Build XCFramework
+        run: |
+          chmod +x ./build_xcframework.sh
+          ./build_xcframework.sh
+
+      - name: Auto-generate version
+        id: version
+        run: |
+          COMMIT_ID=$(git rev-parse --short HEAD)
+          VERSION="1.52.3-${COMMIT_ID}"
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Compress XCFramework
+        run: |
+          cd build
+          zip -r ESpeakNG.xcframework.zip ESpeakNG.xcframework/
+
+      - name: Create Release with Auto-Tag
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: build/ESpeakNG.xcframework.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
