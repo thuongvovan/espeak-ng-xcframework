@@ -29,7 +29,13 @@
 #ifdef HAVE_SYS_ENDIAN_H
 #include <sys/endian.h>
 #else
+#ifdef __APPLE__
+#include <libkern/OSByteOrder.h>
+#define le16toh(x) OSSwapLittleToHostInt16(x)
+#define le32toh(x) OSSwapLittleToHostInt32(x)
+#else
 #include <endian.h>
+#endif
 #endif
 
 #include <espeak-ng/espeak_ng.h>
@@ -40,6 +46,14 @@
 #include "wavegen.h"                   // for wavegen_peaks_t, PeaksToHarmspect
 #include "synthesize.h"                // for KLATT_AV, KLATT_Kopen, N_KLATTP2
 #include "voice.h"                     // for N_PEAKS
+
+/* Fallback implementations for systems without endian.h */
+#ifndef le16toh
+#define le16toh(x) ({ uint16_t _x = (x); ((_x << 8) | (_x >> 8)); })
+#endif
+#ifndef le32toh
+#define le32toh(x) ({ uint32_t _x = (x); ((_x << 24) | ((_x << 8) & 0xFF0000) | ((_x >> 8) & 0xFF00) | (_x >> 24)); })
+#endif
 
 static const int default_freq[N_PEAKS] =
 { 200, 500, 1200, 3000, 3500, 4000, 6900, 7800, 9000 };

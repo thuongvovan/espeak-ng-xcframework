@@ -65,20 +65,35 @@ else
     echo "⚠️  libtool không tìm thấy - cài đặt: brew install libtool"
 fi
 
+# Check auto-versioning
+echo ""
+echo "🔍 Kiểm tra auto-versioning..."
+BUILD_DATE=$(date +%Y%m%d)
+COMMIT_COUNT=$(git rev-list --count HEAD)
+AUTO_VERSION="1.52.3+fork+${BUILD_DATE}.${COMMIT_COUNT}"
+echo "✅ Auto-version format: $AUTO_VERSION"
+echo "   (Được generate tự động từ build script)"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✨ Setup CI/CD hoàn tất!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+echo "📌 Versioning Scheme:"
+echo "   • Auto (mỗi commit): 1.52.3+fork+{YYYYMMDD}.{commit-count}"
+echo "   • Release (tag):     1.52.3+fork+{number}"
+echo ""
 echo "📌 Tiếp theo:"
 echo "   1. Commit & push code:"
 echo "      git push origin master"
 echo ""
-echo "   2. Tạo release:"
-echo "      ./create-release.sh 1.52.4"
+echo "   2. Tạo release (cách 1 - shorthand):"
+echo "      ./create-release.sh fork+1"
 echo ""
-echo "   3. Xem status trên GitHub Actions:"
+echo "   3. Hoặc tạo release (cách 2 - full version):"
+echo "      ./create-release.sh 1.52.3+fork+1"
+echo ""
+echo "   4. Xem status trên GitHub Actions:"
 echo "      https://github.com/YOUR_ORG/espeak-ng-xcframework/actions"
 echo ""
-echo "📖 Xem chi tiết: cat CI_CD_SETUP.md"
-echo ""
+

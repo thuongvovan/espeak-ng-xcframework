@@ -12,8 +12,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Full history để lấy tags
 
       - name: Setup build dependencies
         run: |
@@ -24,14 +22,17 @@ jobs:
           chmod +x ./build_xcframework.sh
           ./build_xcframework.sh
 
-      - name: Get version
+      - name: Extract version
         id: version
         run: |
-          # Extract version from build_xcframework.sh or use git tag
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
+            # Release tag: use tag as version
+            VERSION=${GITHUB_REF#refs/tags/v}
           else
-            VERSION=$(grep "VERSION=" build_xcframework.sh | head -1 | cut -d'"' -f2)
+            # Commit: auto-generate from build script
+            BUILD_DATE=$(date +%Y%m%d)
+            COMMIT_COUNT=$(git rev-list --count HEAD)
+            VERSION="1.52.3+fork+${BUILD_DATE}.${COMMIT_COUNT}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Build version: ${VERSION}"
@@ -40,9 +41,8 @@ jobs:
         run: |
           cd build
           tar -czf ESpeakNG.xcframework.tar.gz ESpeakNG.xcframework/
-          ls -lh ESpeakNG.xcframework.tar.gz
 
-      - name: Create Release (on tag push)
+      - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
@@ -52,17 +52,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Artifact (on commit)
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
-        with:
-          name: ESpeakNG-${{ steps.version.outputs.version }}
-          path: build/ESpeakNG.xcframework.tar.gz
-          retention-days: 30
-
-      - name: Update Release Notes
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          echo "✅ XCFramework ${{ steps.version.outputs.version }} released successfully!"
-          echo "📦 Available at: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
